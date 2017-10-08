@@ -1,0 +1,144 @@
+#include "../include/memfile.h"
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+/*
+ *  Linux
+ */
+#if defined(linux) || defined(__linux) || defined(__linux__) || defined(__GNU__) || defined(__GLIBC__)
+#include <sys/mman.h>
+typedef struct{
+  int fd;
+  unsigned long size;
+}memfile_d;
+
+char memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res){
+  int fd;
+  void *mem;
+  int i, prot;
+  if(res == NULL)return MEMFILE_EINP;
+  res->intdata = NULL;
+  res->data = NULL;
+  i = flags & MEMFILE_READWRITE;
+  if(i == MEMFILE_READWRITE){
+    i = O_RDWR | O_CREAT;
+    prot = PROT_READ | PROT_WRITE;
+  }else if(i == MEMFILE_WRITE){
+    i = O_WRONLY | O_CREAT;
+    prot = PROT_WRITE;
+  }else{
+    i = O_RDONLY | O_CREAT;
+    prot = PROT_READ;
+  }
+  
+  fd = open(filename, i);
+  if(fd < 0)return MEMFILE_EFILE;
+  if((flags & MEMFILE_REWRITE)&&(flags & MEMFILE_WRITE)){
+    char sample = ' ';
+    for(i=0; i<size; i++)write(fd, &sample, 1);
+  }
+  mem = mmap(NULL, size, prot, MAP_SHARED, fd, 0);
+  if(mem == NULL){
+    close(fd);
+    return MEMFILE_EMEM;
+  }
+
+  res->intdata = malloc(sizeof(memfile_d));
+  ((memfile_d*)(res->intdata))->fd = fd;
+  ((memfile_d*)(res->intdata))->size = size;
+  res->data = mem;
+  
+  return MEMFILE_OK;
+}
+void memfile_close(struct memfile_t *mem){
+  int fd;
+  unsigned long size;
+  if(mem == NULL)return;
+  if(mem->intdata == NULL)return;
+  fd = ((memfile_d*)(mem->intdata))->fd;
+  size = ((memfile_d*)(mem->intdata))->size;
+  munmap(mem->data, size);
+  close(fd);
+  free(mem->intdata);
+  mem->intdata = NULL;
+  mem->data = NULL;
+}
+/*
+ *  Win 32
+ */
+#elif defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
+ //Win32
+#define _CRT_SECURE_NO_WARNINGS
+#include <windows.h>
+typedef struct{
+  HANDLE fd, fm;
+}memfile_d;
+char memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res){
+  HANDLE fd, fm;
+  void *mem;
+  int cflag, mflag, rflag;
+  if(res == NULL)return MEMFILE_EINP;
+  res->intdata = NULL;
+  res->data = NULL;
+  cflag = flags & MEMFILE_READWRITE;
+  if(cflag == MEMFILE_READWRITE){
+    cflag = GENERIC_READ | GENERIC_WRITE;
+    mflag = PAGE_READWRITE;
+    rflag = FILE_MAP_READ | FILE_MAP_WRITE;
+  }else if(cflag == MEMFILE_WRITE){
+    cflag = GENERIC_WRITE;
+    mflag = PAGE_READWRITE;
+    rflag = FILE_MAP_WRITE;
+  }else{
+    cflag = GENERIC_READ;
+    mflag = PAGE_READONLY;
+    rflag = FILE_MAP_READ;
+  }
+  
+  fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if(fd == INVALID_HANDLE_VALUE)return MEMFILE_EFILE;
+  if(fd == NULL)return MEMFILE_EFILE;
+
+  if((flags & MEMFILE_REWRITE)&&(flags & MEMFILE_WRITE)){
+    char sample = ' ';
+    long unsigned int cnt1=0;
+    //в документации сказано, что последние 2 параметра МОГУТ быть NULL, однако,
+    //в windows это приводит к вылету
+    //в wine все в порядке
+    for(cflag=0; cflag<size;cflag++)WriteFile(fd, &sample, 1, &cnt1, NULL);
+  }
+  
+  fm = CreateFileMapping(fd, NULL, mflag, 0, size, NULL);
+  if(fm == NULL){
+    CloseHandle(fm);
+    return MEMFILE_EFILE;
+  }
+  mem = MapViewOfFile(fm, rflag, 0, 0, size);
+  if(mem == NULL){
+    CloseHandle(fm);
+    CloseHandle(fd);
+    return MEMFILE_EMEM;
+  }
+  res->intdata = malloc(sizeof(memfile_d));
+  ((memfile_d*)(res->intdata))->fd = fd;
+  ((memfile_d*)(res->intdata))->fm = fm;
+  res->data = mem;
+  
+  return MEMFILE_OK;
+}
+void memfile_close(struct memfile_t *mem){
+  if(mem == NULL)return;
+  if(mem->intdata == NULL)return;
+  HANDLE fd, fm;
+  fd = ((memfile_d*)(mem->intdata))->fd;
+  fm = ((memfile_d*)(mem->intdata))->fm;
+  UnmapViewOfFile(mem->data);
+  CloseHandle(fm);
+  CloseHandle(fd);
+}
+ /*
+  *  Other systems (unsupported)
+  */
+#else
+  #error "Unsupported platform"
+#endif
