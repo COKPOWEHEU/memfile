@@ -111,13 +111,17 @@ char memfile_create(const char filename[], unsigned char flags, unsigned long si
   if(fd == INVALID_HANDLE_VALUE)return MEMFILE_EFILE;
   if(fd == NULL)return MEMFILE_EFILE;
 
-  if((flags & MEMFILE_REWRITE)&&(flags & MEMFILE_WRITE)){
-    char sample = ' ';
-    long unsigned int cnt1=0;
-    //в документации сказано, что последние 2 параметра МОГУТ быть NULL, однако,
-    //в windows это приводит к вылету
-    //в wine все в порядке
-    for(cflag=0; cflag<size;cflag++)WriteFile(fd, &sample, 1, &cnt1, NULL);
+  if(flags & MEMFILE_WRITE){
+    if(flags & MEMFILE_REWRITE){
+      char sample = ' ';
+      long unsigned int cnt1=0;
+      //в документации сказано, что последние 2 параметра МОГУТ быть NULL, однако,
+      //в windows это приводит к вылету
+      //в wine все в порядке
+      for(cflag=0; cflag<size;cflag++)WriteFile(fd, &sample, 1, &cnt1, NULL);
+    }else if(flags & MEMFILE_FASTREWRITE){
+      SetFilePointer(fd, size, NULL, FILE_BEGIN);
+    }
   }
   
   fm = CreateFileMapping(fd, NULL, mflag, 0, size, NULL);
