@@ -1,4 +1,4 @@
-#include "../include/memfile.h"
+#include "memfile.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
