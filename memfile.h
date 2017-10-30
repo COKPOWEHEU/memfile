@@ -14,7 +14,7 @@
 
 struct memfile_t{
   void *intdata; // зависит от ОС
-  void *data;    //область памяти, в которую отображается файл
+  char *data;    //область памяти, в которую отображается файл
 };
 
 char memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res);
