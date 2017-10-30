@@ -85,30 +85,28 @@ typedef struct{
 char memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res){
   HANDLE fd, fm;
   void *mem;
-  int cflag, mflag, rflag;
+  int cflag=0, mflag=0, vflag=0;
   if(res == NULL)return MEMFILE_EINP;
   res->intdata = NULL;
   res->data = NULL;
-  cflag = flags & MEMFILE_READWRITE;
-  if(cflag == MEMFILE_READWRITE){
-    cflag = GENERIC_READ | GENERIC_WRITE;
-    mflag = PAGE_READWRITE;
-    rflag = FILE_MAP_READ | FILE_MAP_WRITE;
-  }else if(cflag == MEMFILE_WRITE){
-    cflag = GENERIC_WRITE;
-    mflag = PAGE_READWRITE;
-    rflag = FILE_MAP_WRITE;
-  }else{
-    cflag = GENERIC_READ;
+  
+  if(flags & MEMFILE_READ){
+    cflag |= GENERIC_READ;
     mflag = PAGE_READONLY;
-    rflag = FILE_MAP_READ;
+    vflag |= FILE_MAP_READ;
+  }
+  if(flags & MEMFILE_WRITE){
+    cflag |= GENERIC_WRITE;
+    mflag = PAGE_READWRITE;
+    vflag |= FILE_MAP_WRITE;
   }
   
-  if(cflag == MEMFILE_READ){
-    fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  }else{
+  if(flags & MEMFILE_WRITE){
     fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  }else{
+    fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   }
+  
   
   if(fd == INVALID_HANDLE_VALUE)return MEMFILE_EFILE;
   if(fd == NULL)return MEMFILE_EFILE;
@@ -127,7 +125,7 @@ char memfile_create(const char filename[], unsigned char flags, unsigned long si
     CloseHandle(fm);
     return MEMFILE_EFILE;
   }
-  mem = MapViewOfFile(fm, rflag, 0, 0, size);
+  mem = MapViewOfFile(fm, vflag, 0, 0, size);
   if(mem == NULL){
     CloseHandle(fm);
     CloseHandle(fd);
