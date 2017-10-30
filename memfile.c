@@ -14,28 +14,37 @@ typedef struct{
 
 char memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res){
   int fd;
-  void *mem;
-  int i, prot;
+  void *mem=NULL;
+  int i, prot=0, acc=0;
   if(res == NULL)return MEMFILE_EINP;
   res->intdata = NULL;
   res->data = NULL;
-  i = flags & MEMFILE_READWRITE;
-  if(i == MEMFILE_READWRITE){
-    i = O_RDWR | O_CREAT;
-    prot = PROT_READ | PROT_WRITE;
-  }else if(i == MEMFILE_WRITE){
-    i = O_WRONLY | O_CREAT;
-    prot = PROT_WRITE;
-  }else{
-    i = O_RDONLY | O_CREAT;
-    prot = PROT_READ;
+
+  if(flags & MEMFILE_READ){
+    prot |= PROT_READ;
+    acc  |= S_IRUSR | S_IRGRP | S_IROTH;
+    i = O_RDONLY;
   }
-  
-  fd = open(filename, i);
+  if(flags & MEMFILE_WRITE){
+    i = O_CREAT;
+    prot |= PROT_WRITE;
+    acc  |= S_IWUSR;
+    if(flags & MEMFILE_READ){
+      i |= O_RDWR;
+    }else{
+      i |= O_WRONLY;
+    }
+  }
+
+  fd = open(filename, i, acc);
   if(fd < 0)return MEMFILE_EFILE;
-  if((flags & MEMFILE_REWRITE)&&(flags & MEMFILE_WRITE)){
-    char sample = ' ';
-    for(i=0; i<size; i++)write(fd, &sample, 1);
+  if(flags & MEMFILE_WRITE){
+    if(flags & MEMFILE_REWRITE){
+      for(acc=0; acc<size; acc++)write(fd, " ", 1);
+    }else if(flags & MEMFILE_FASTREWRITE){
+      lseek(fd, size, SEEK_SET);
+      write(fd, " ", 1);
+    }
   }
   mem = mmap(NULL, size, prot, MAP_SHARED, fd, 0);
   if(mem == NULL){
@@ -95,7 +104,12 @@ char memfile_create(const char filename[], unsigned char flags, unsigned long si
     rflag = FILE_MAP_READ;
   }
   
-  fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if(cflag == MEMFILE_READ){
+    fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  }else{
+    fd = CreateFile(filename, cflag, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  }
+  
   if(fd == INVALID_HANDLE_VALUE)return MEMFILE_EFILE;
   if(fd == NULL)return MEMFILE_EFILE;
 
